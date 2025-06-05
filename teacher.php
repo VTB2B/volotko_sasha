@@ -30,7 +30,6 @@ try {
     $username = htmlspecialchars($_SESSION['user']);
 
     // AJAX-запрос для инициализации оценок
-// AJAX-запрос для инициализации оценок
     if (isset($_GET['ajax']) && $_GET['ajax'] === 'initData') {
         $s = $pdo->prepare("SELECT id, firstname, lastname, family FROM users WHERE group_id = :gid AND role = 'student' ORDER BY family");
         $s->execute([':gid' => $groupId]);
@@ -40,6 +39,17 @@ try {
         $subjects = $s2->fetchAll(PDO::FETCH_ASSOC);
         header('Content-Type: application/json');
         echo json_encode(['students' => $students, 'subjects' => $subjects]);
+        exit;
+    }
+
+    // AJAX-запрос для загрузки студентов
+    if (isset($_GET['ajax']) && $_GET['ajax'] === 'loadGrades') {
+        $stmt = $pdo->prepare("SELECT id, firstname, lastname, family FROM users WHERE group_id = :gid AND role = 'student' ORDER BY family");
+        $stmt->execute([':gid' => $groupId]);
+        $students = $stmt->fetchAll(PDO::FETCH_ASSOC);
+
+        header('Content-Type: application/json');
+        echo json_encode(['students' => $students]);
         exit;
     }
 
@@ -309,7 +319,23 @@ try {
             <div class="grades-table" id="gradesSection" style="display:none;">
                 <h2>Успеваемость по группе</h2>
                 <table id="gradesTable" class="table table-bordered">
-                    <thead><tr><th>ФИО</th><th>Управление</th></tr></thead>
+                    <thead>
+                        <tr>
+                            <th>ФИО</th>
+                            <th>Сентябрь</th>
+                            <th>Октябрь</th>
+                            <th>Ноябрь</th>
+                            <th>Декабрь</th>
+                            <th>1 семестр</th>
+                            <th>Январь</th>
+                            <th>Февраль</th>
+                            <th>Март</th>
+                            <th>Апрель</th>
+                            <th>Май</th>
+                            <th>Июнь</th>
+                            <th>2 семестр</th>
+                        </tr>
+                    </thead>
                     <tbody id="gradesTableBody"></tbody>
                 </table>
             </div>
@@ -335,27 +361,38 @@ try {
         const submitAddSubjectButton = document.getElementById('submitAddSubjectButton');
         const subjectMessage = document.getElementById('subjectMessage');
 
+        hideAllSections();
+        document.getElementById('welcomeMessage').style.display = 'block'; // Показываем приветственное сообщение
+
         function hideAllSections() {
             document.getElementById('welcomeMessage').style.display = 'none';
             document.getElementById('userTable').style.display = 'none';
             document.getElementById('subjectsTable').style.display = 'none';
             document.getElementById('gradesSection').style.display = 'none';
             document.getElementById('addUserForm').style.display = 'none';
-            // Hide the add user button when showing the welcome message
             document.getElementById('addUserButtonContainer').style.display = 'none';
         }
+
         function showUserTable() {
             hideAllSections();
             document.getElementById('userTable').style.display = 'block';
-            document.getElementById('addUserButtonContainer').style.display = 'block'
+            document.getElementById('addUserButtonContainer').style.display = 'block';
             document.getElementById('addUserButton').onclick = showAddUserForm;
         }
+
         function showSubjectsTable() {
             hideAllSections();
             document.getElementById('subjectsTable').style.display = 'block';
             loadSubjects();
         }
-                // Загрузка и управление предметами
+
+        function showGradesTable() {
+            hideAllSections();
+            document.getElementById('gradesSection').style.display = 'block';
+            loadGrades();
+        }
+
+        // Загрузка и управление предметами
         function loadSubjects() {
             const xhr = new XMLHttpRequest();
             xhr.open("GET", "load_subjects.php", true);
@@ -380,6 +417,7 @@ try {
             };
             xhr.send();
         }
+
         submitAddSubjectButton.onclick = function() {
             const name = document.getElementById('subjectName').value.trim();
             if (!name) { subjectMessage.textContent = 'Название предмета обязательно'; return; }
@@ -397,6 +435,7 @@ try {
             };
             xhr.send('name='+encodeURIComponent(name)+'&groupId='+encodeURIComponent(<?= $groupId ?>));
         };
+
         function deleteSubject(id) {
             const xhr = new XMLHttpRequest();
             xhr.open('POST','delete_subject.php',true);
@@ -407,15 +446,18 @@ try {
             };
             xhr.send('id='+id);
         }
+
         // Управление пользователями
         function showAddUserForm() {
             hideAllSections(); document.getElementById('addUserForm').style.display='block';
         }
+
         function hideAddUserForm() {
             document.getElementById('addUserForm').style.display = 'none';
             document.getElementById('addUserButtonContainer').style.display = 'block';
             showUserTable(); // Show the user table again
         }
+
         addUserButton.onclick = function() {
             const f = document.getElementById('firstname').value.trim();
             const l = document.getElementById('lastname').value.trim();
@@ -449,6 +491,7 @@ try {
             // Send the AJAX request with the username
             xhr.send(`username=${encodeURIComponent(usernameNew)}&firstname=${encodeURIComponent(f)}&lastname=${encodeURIComponent(l)}&family=${encodeURIComponent(fam)}&groupId=${encodeURIComponent(<?= $groupId ?>)}`);
         };
+
         function deleteUser(id) {
             const xhr = new XMLHttpRequest();
             xhr.open('POST','delete_student.php',true);
@@ -459,12 +502,14 @@ try {
             };
             xhr.send('id='+id);
         }
+
         function sortTable(idx) {
             const tbl = document.querySelector('table');
             const rows = Array.from(tbl.tBodies[0].rows);
             rows.sort((a,b)=>a.cells[idx].innerText.localeCompare(b.cells[idx].innerText));
             rows.forEach(r=>tbl.tBodies[0].appendChild(r));
         }
+
         // Sidebar toggle
         const toggleBtn = document.getElementById('toggleButton');
         toggleBtn.onclick = function() {
@@ -475,15 +520,45 @@ try {
         document.getElementById('manageUsersButton').onclick = showUserTable;
         document.getElementById('manageSubjectsButton').onclick = showSubjectsTable;
         document.getElementById('manageGradesButton').onclick = showGradesTable;
-        document.body.addEventListener('change', e => {
-            if (e.target.matches('.grade-input')) {
-                const {studentId, subjectId, date} = e.target.dataset;
-                fetch('save_grade.php',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({student_id:studentId,subject_id:subjectId,date:date,grade:e.target.value||null})})
-                    .then(r=>r.json()).then(res=>{if(!res.success)alert('Ошибка сохранения');});
-            }
-        });
+        function handleGradeClick(studentId, subjectId) {
+            // Здесь можно добавить логику для обработки клика по иконке
+            // Например, открыть модальное окно для ввода оценки
+            alert(`Клик по студенту ID: ${studentId}, предмет ID: ${subjectId}`);
+        }
+        // Загрузка успеваемости
+        function loadGrades() {
+            const xhr = new XMLHttpRequest();
+            xhr.open("GET", "?ajax=loadGrades", true);
+            xhr.onload = function() {
+                if (xhr.status === 200) {
+                    const response = JSON.parse(xhr.responseText);
+                    const tbody = document.getElementById('gradesTableBody');
+                    tbody.innerHTML = '';
+
+                    response.students.forEach(student => {
+                        const row = document.createElement('tr');
+                        row.innerHTML = `<td>${student.family} ${student.firstname} ${student.lastname}</td>`;
+                        
+                        for (let i = 0; i < 12; i++) {
+                            row.innerHTML += `
+                                <td>
+                                    <button class="grade-button" onclick="handleGradeClick(${student.id}, ${i + 1})">
+                                        <img src="pic/icon_5.png" alt="Оценка" style="width: 20px; height: 20px;">
+                                    </button>
+                                </td>`;
+                        }
+                        tbody.appendChild(row);
+                    });
+                }
+            };
+            xhr.send();
+        }
+
+        document.getElementById('manageGradesButton').onclick = showGradesTable;
+
         // Инициализация
         hideAllSections();
+        showUserTable(); // По умолчанию показываем состав группы
     </script>
 </body>
 </html>
